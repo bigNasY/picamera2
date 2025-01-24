@@ -2,6 +2,7 @@ from picamera2 import Picamera2, Preview
 from picamera2.encoders import H264Encoder
 from libcamera import Transform
 import cv2
+import os
 import time
 
 
@@ -39,8 +40,8 @@ def fps_video(picam2):
     time.sleep(10)
     picam2.stop_recording()
     picam2.stop()
-
-    vid = cv2.VideoCapture('/home/bob/Bookshelf/test.h264')
+    path = os.getcwd()
+    vid = cv2.VideoCapture(f'{path}/test.h264')
     count = 0
     success = 1
     while success:

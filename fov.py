@@ -14,7 +14,7 @@ def main():
     picam2.configure(config)
     picam2.set_controls({"FrameRate": 50})
     picam2.start()
-    cv2.imwrite('full.jpg', picam2.capture_array())
+    show_img(picam2.capture_array())
     # print(picam2.camera_properties['PixelArraySize'])
     # print(picam2.capture_metadata()['ScalerCrop'])
     change_fov(picam2, 'zoom.jpg', 0.7)
@@ -32,7 +32,9 @@ def change_fov(picam2, name='test.jpg', scale=1):
     picam2.set_controls({"ScalerCrop": offset + newSize})
     time.sleep(2)
     picam2.capture_metadata()
-    cv2.imwrite(name, picam2.capture_array())
+    img = picam2.capture_array()
+    # cv2.imwrite(name,img)
+    show_img(img)
 
 
 def half_fov(picam2):
@@ -45,7 +47,17 @@ def half_fov(picam2):
     picam2.set_controls({"ScalerCrop": offset + newSize})
     time.sleep(2)
     picam2.capture_metadata()
-    cv2.imwrite('half.jpg', picam2.capture_array())
+    img = picam2.capture_array()
+    # cv2.imwrite('half.jpg', img)
+    show_img(img)
+
+
+def show_img(img):
+    while True:
+        cv2.imshow("image", img)
+        if cv2.waitKey(1) == ord('q'):
+            cv2.destroyAllWindows()
+            break
 
 
 if __name__ == "__main__":

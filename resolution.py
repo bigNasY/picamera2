@@ -8,8 +8,8 @@ import time
 def main():
     picam2 = Picamera2()
     modes = picam2.sensor_modes
-    take_picture(picam2, 'im1.jpg', modes)
-    take_picture(picam2, 'im2.jpg', modes)
+    take_picture(picam2, 'im1', modes)
+    take_picture(picam2, 'im2', modes)
 
 
 def take_picture(picam2, name, modes):
@@ -20,7 +20,12 @@ def take_picture(picam2, name, modes):
     picam2.configure(config)
     picam2.set_controls({"FrameRate": 50})
     picam2.start()
-    cv2.imwrite(name, picam2.capture_array())
+    img = picam2.capture_array()
+    while True:
+        cv2.imshow(name, img)
+        if cv2.waitKey(1) == ord('q'):
+            cv2.destroyAllWindows()
+            break
     picam2.stop()
 
 
