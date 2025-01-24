@@ -18,7 +18,7 @@ def main():
 
 
 def fps_image(picam2):
-    # test fps at 50
+    # test fps at 50 with continuous image capture using opencv
     picam2.start()
     t_end = time.time() + 10
     count = 0
@@ -38,6 +38,7 @@ def fps_video(picam2):
     picam2.start_recording(encoder, 'test.h264')
     time.sleep(10)
     picam2.stop_recording()
+    picam2.stop()
 
     vid = cv2.VideoCapture('/home/bob/Bookshelf/test.h264')
     count = 0

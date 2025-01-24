@@ -13,7 +13,7 @@ def main():
     picam2.configure(config)
     picam2.set_controls({"ExposureTime": 1000})
     picam2.start()
-    low_exp(picam2)
+    # low_exp(picam2)
     high_exp(picam2)
 
 
@@ -21,7 +21,7 @@ def low_exp(picam2):
     # capture low exposre time (1ms)
     img = picam2.capture_array()
     time.sleep(2)
-    # cv2.imshow("low ET", img) -- This is being weird
+
     cv2.imwrite('1ms.jpg', img)
 
 
@@ -29,9 +29,10 @@ def high_exp(picam2):
     # capture high exposure time (100ms)
     picam2.set_controls({"ExposureTime": 100000})
     time.sleep(2)
+    picam2.capture_metadata()
     img2 = picam2.capture_array()
     time.sleep(2)
-    # cv2.imshow("high ET", img2)
+
     cv2.imwrite("100ms.jpg", img2)
 
 
