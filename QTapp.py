@@ -7,11 +7,17 @@ from picamera2.previews.qt import QGlPicamera2
 import cv2
 import time
 
-target = 0
+
 cur_task = ''
+t_end = 0
 exposure_time = 50000
 scale = 1.05
 picam2 = Picamera2()
+target = 0
+cur_task = ''
+min_exp, max_exp, def_exp = picam2.camera_controls['ExposureTime']
+exposure_time = (max_exp + min_exp) // 2
+scale = 1.05
 frame_rate = 50
 lens_pos = 32
 mode = picam2.sensor_modes[0]
@@ -19,7 +25,7 @@ print(mode)
 config = picam2.create_preview_configuration(main={"size" : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
 picam2.align_configuration(config)
 picam2.configure(config)
-picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, 'LensPosition' : 32})
+picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, 'LensPosition' : lens_pos})
 
 
 def on_button1_clicked():
@@ -86,16 +92,24 @@ def on_button5_clicked():
 def on_button6_clicked():
 	global cur_task
 	cur_task = 'fr'
-	t_end = time.time() + 5
-	count = 0
-	while time.time() < t_end:
-		picam2.capture_array("main", signal_function=qpicamera2.signal_done)
-		count += 1
+	t_start = time.time()
 	
+	cfg = picam2.create_still_configuration()
+
+
 	
-	fps = count/5
-	print(count)
-	print(f'FPS: {fps}')
+	picam2.switch_mode_and_capture_file(cfg, 'img.jpg', signal_function=qpicamera2.signal_done)
+	t_end = time.time()
+	
+	picam2.stop()
+	config = picam2.create_preview_configuration(main={"size" : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+	picam2.align_configuration(config)
+	picam2.configure(config)
+	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, 'LensPosition' : lens_pos}) 
+	picam2.start()
+	t = t_end - t_start
+	print(t_end)
+	print(f'Time to capture one image: {t}')
 	
 
 
@@ -111,11 +125,18 @@ def zoom_done(job):
 		button1.setEnabled(True)
 		button2.setEnabled(True)
 	
+	
 
 def value_changed(i):
-	global exposure_time
-	exposure_time = i*1000
-	picam2.set_controls({'ExposureTime' : i*1000})
+	try:
+		e = int(i)
+		if(e >= 0 and e <= 66):
+			global exposure_time
+			exposure_time = e *1000
+			picam2.set_controls({"ExposureTime" : e *1000})
+			
+	except:
+		pass
 
 
 def text_changed(val):
@@ -164,16 +185,11 @@ button5.clicked.connect(on_button5_clicked)
 button6 = QPushButton("Test Frame Rate")
 button6.clicked.connect(on_button6_clicked)
 
-expTimeSlider = QSlider()
-expTimeSlider.setMinimum(1)
-expTimeSlider.setMaximum(100)
-expTimeSlider.setSingleStep(1)
-expTimeSlider.valueChanged.connect(value_changed)
-expTimeSlider.setValue(50)
+expTimeSlider = QLineEdit()
+expTimeSlider.setMaxLength(4)
+expTimeSlider.textEdited.connect(value_changed)
+expTimeSlider.setPlaceholderText(f'Exposure Time ({min_exp // 1000} to {max_exp // 1000} ms.)')
 
-
-label = QLabel()
-label.setText('Exposure Time')
 
 
 focalDistEdit = QLineEdit()
@@ -210,21 +226,20 @@ layout_v.addWidget(button1)
 layout_v.addWidget(button2)
 layout_v.addLayout(layout_v3)
 layout_v.addWidget(focalDistEdit)
+layout_v.addWidget(expTimeSlider)
 layout_v.addLayout(layout_v4)
 
 
-layout_v2 = QVBoxLayout()
-layout_v2.addWidget(label)
-layout_v2.addWidget(expTimeSlider)
+
 
 
 layout.addLayout(layout_v)
-layout.addLayout(layout_v2)
+
 
 
 qpicamera2.setWindowTitle("sigma")
 window.setLayout(layout)
-window.resize(800, 600)
+window.resize(800, 800)
 picam2.start()
 window.show()
 app.exec()
