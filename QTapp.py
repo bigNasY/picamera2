@@ -27,11 +27,12 @@ exposure_time = (max_exp + min_exp) // 2
 scale = 1.05
 frame_rate = 30
 lens_pos = 32
-x1 = 0;
-x2 = 4608;
-y1 = 0;
-y2 = 2592;
+x1 = 0
+x2 = 4608
+y1 = 0
+y2 = 2592
 mode = picam2.sensor_modes[0]
+actual_size = [i for i in mode['size']]
 config = picam2.create_preview_configuration(main={"size" : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
 picam2.align_configuration(config)
 picam2.configure(config)
@@ -60,6 +61,8 @@ def on_button2_clicked():
 
 def on_button3_clicked():
 	global mode
+	global actual_size
+	actual_size = [4608, 2592]
 	label.setText('4608 x 2592')
 	button3.setEnabled(False)
 	picam2.stop()
@@ -76,6 +79,8 @@ def on_button3_clicked():
 	
 def on_button4_clicked():
 	global mode
+	global actual_size
+	actual_size = [1536, 864]
 	label.setText('1536 x 864')
 	button4.setEnabled(False)
 	picam2.stop()
@@ -91,6 +96,8 @@ def on_button4_clicked():
 	
 def on_button5_clicked():
 	global mode
+	global actual_size
+	actual_size = [2304, 1296]
 	label.setText('2304 x 1296')
 	button5.setEnabled(False)
 	picam2.stop()
@@ -213,6 +220,7 @@ def on_cropper2_clicked():
 
 def zoom_done(job):
 	global cur_task
+	global actual_size
 	result = picam2.wait(job)
 	if cur_task == 'zoom':
 		full_res = picam2.camera_properties['PixelArraySize']
@@ -223,7 +231,8 @@ def zoom_done(job):
 		picam2.set_controls({'ScalerCrop' : offset+newSize})
 		button1.setEnabled(True)
 		button2.setEnabled(True)
-		label.setText(f'{newSize[0]} x {newSize[1]}')
+		actual_size = [int(scale * actual_size[0]), int(scale * actual_size[1])]
+		label.setText(f'{actual_size[0]} x {actual_size[1]}')
 	if cur_task == 'cropp':
 		pass
 	
