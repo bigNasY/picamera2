@@ -22,18 +22,20 @@ scale = 1.05
 picam2 = Picamera2()
 target = 0
 cur_task = ''
+print(picam2.camera_controls['ExposureTime'])
 min_exp, max_exp, def_exp = picam2.camera_controls['ExposureTime']
 exposure_time = (max_exp + min_exp) // 2
 scale = 1.05
 frame_rate = 30
 lens_pos = 32
+print(picam2.camera_controls['LensPosition'])
 x1 = 0
 x2 = 4608
 y1 = 0
 y2 = 2592
 mode = picam2.sensor_modes[0]
 actual_size = [i for i in mode['size']]
-config = picam2.create_preview_configuration(main={"size" : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+config = picam2.create_preview_configuration(main={'size' : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
 picam2.align_configuration(config)
 picam2.configure(config)
 picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, 'LensPosition' : lens_pos})
@@ -68,7 +70,7 @@ def on_button3_clicked():
 	picam2.stop()
 	mode = picam2.sensor_modes[2]
 	print(mode)
-	config = picam2.create_preview_configuration(main={"size" : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+	config = picam2.create_preview_configuration(main={'size' : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
 	picam2.align_configuration(config)
 	picam2.configure(config)
 	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
@@ -85,7 +87,7 @@ def on_button4_clicked():
 	button4.setEnabled(False)
 	picam2.stop()
 	mode = picam2.sensor_modes[0]
-	config = picam2.create_preview_configuration(main={"size" : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+	config = picam2.create_preview_configuration(main={'size' : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
 	picam2.align_configuration(config)
 	picam2.configure(config)
 	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
@@ -103,7 +105,7 @@ def on_button5_clicked():
 	picam2.stop()
 	mode = picam2.sensor_modes[1]
 	print(mode)
-	config = picam2.create_preview_configuration(main={"size" : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+	config = picam2.create_preview_configuration(main={'size' : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
 	picam2.align_configuration(config)
 	picam2.configure(config)
 	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
@@ -115,7 +117,9 @@ def on_button5_clicked():
 def on_button6_clicked():
 	global cur_task
 	cur_task = 'fr'
-	picam2.capture_file(f'/home/bob/images/img{str(time.time())[-4:]}.jpg', signal_function=qpicamera2.signal_done)
+	cfg = picam2.create_still_configuration(main={'size' : actual_size}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+	
+	picam2.switch_mode_and_capture_file(cfg, f'/home/bob/images/img{str(time.time())[-4:]}.jpg', signal_function=qpicamera2.signal_done)
 	
 	
 def on_button7_clicked():
@@ -125,6 +129,8 @@ def on_button7_clicked():
 	for _ in range(int(capture_time*frame_rate)):
 		picam2.capture_file(f'/home/bob/images/img{str(time.time())[-4:]}.jpg', signal_function=qpicamera2.signal_done)
 	'''
+	
+	
 	global recording
 	global file_name
 	global t_start
@@ -212,10 +218,7 @@ def on_cropper_clicked():
 	except:
 		pass
 		
-def on_cropper2_clicked():
-	global cur_task
-	cur_task = 'cropp'
-	picam2.capture_array('main', signal_function=qpicamera2.signal_done)
+
 
 
 def zoom_done(job):
@@ -252,10 +255,18 @@ def value_changed(i):
 
 def text_changed(val):
 	try:
-		if int(val) >= 0 and int(val) <= 32: 
-			global lens_pos
-			lens_pos = int(val)
-			picam2.set_controls({'LensPosition' : int(val)})
+		print(val)
+		global lens_pos
+		val = float(val)/100.0
+		if 1.0/float(val) <= 32 and 1.0/float(val) > 0:
+			lens_pos = 1.0/float(val)
+			#print(val + ' ' + lens_pos)
+			picam2.set_controls({'LensPosition' : lens_pos})
+			return
+		elif int(val) == 0:
+			lens_pos = 0
+			#print(val + ' ' + lens_pos)
+			picam2.set_controls({'LensPosition' : 0.0})
 	except:
 		pass
 
@@ -313,8 +324,8 @@ expTimeSlider.setPlaceholderText(f'Exposure Time ({min_exp // 1000} to {max_exp 
 
 
 focalDistEdit = QLineEdit()
-focalDistEdit.setMaxLength(2)
-focalDistEdit.setPlaceholderText('Enter focal distance (0 to 32 cm)')
+focalDistEdit.setMaxLength(5)
+focalDistEdit.setPlaceholderText('Enter focal distance (min 3.2 cm)')
 focalDistEdit.textEdited.connect(text_changed)
 
 frameEdit = QLineEdit()
@@ -345,8 +356,6 @@ y2edit.textEdited.connect(on_y2_changed)
 cropper = QPushButton('Crop Image')
 cropper.clicked.connect(on_cropper_clicked)
 
-cropper2 = QPushButton('Crop Image 2')
-cropper2.clicked.connect(on_cropper2_clicked)
 
 label = QLabel('1532 x 864')
 label.setFixedSize(300, 20)
