@@ -3,6 +3,7 @@ from picamera2.encoders import H264Encoder
 from libcamera import Transform, controls
 from PyQt5 import Qt
 from PyQt5.QtWidgets import *
+from PyQt5.QtGui import QPainter, QColor, QFont
 from picamera2.previews.qt import QGlPicamera2
 from picamera2.outputs import FileOutput
 import cv2
@@ -10,16 +11,22 @@ import time
 import datetime
 import sys
 import os
+from PyQt5.QtCore import QObject, QThread, pyqtSignal
+import numpy as np
+import math
 
+picam2 = Picamera2()
 t_start = 0
 t_end = 0
 recording = False
-file_name = ''
+file_name = 'img'
 cur_task = ''
+dir_name = 'images'
+path = ''
 app = QApplication([])
+overlay = np.zeros((720, 1280, 4), dtype=np.uint8)
 capture_time = 1
 scale = 1.05
-picam2 = Picamera2()
 target = 0
 cur_task = ''
 print(picam2.camera_controls['ExposureTime'])
@@ -39,6 +46,32 @@ config = picam2.create_preview_configuration(main={'size' : (1280, 720)}, sensor
 picam2.align_configuration(config)
 picam2.configure(config)
 picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, 'LensPosition' : lens_pos})
+
+
+
+class Worker(QObject):
+    finished = pyqtSignal()
+    progress = pyqtSignal(int)
+    
+    def run(self):
+        change_config(picam2.create_still_configuration(main={'size' : actual_size}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))
+       
+        t_end = time.time() + 5.0
+        while time.time() <= t_end:
+            picam2.capture_file(f'{path}/{file_name + str(time.time())[-4:]}.jpg')
+         
+        change_config(picam2.create_preview_configuration(main={"size" : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))   
+        
+        self.finished.emit()
+
+thread = QThread()
+worker = Worker()
+def change_config(cfg):
+    picam2.stop()
+    picam2.configure(cfg)
+    picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
+    picam2.start()
+
 
 
 def on_button1_clicked():
@@ -64,6 +97,9 @@ def on_button2_clicked():
 def on_button3_clicked():
 	global mode
 	global actual_size
+	global overlay
+	#overlay = np.zeros((2592, 4608, 4), dtype=np.uint8)
+	#qpicamera2.set_overlay(overlay)
 	actual_size = [4608, 2592]
 	label.setText('4608 x 2592')
 	button3.setEnabled(False)
@@ -75,6 +111,7 @@ def on_button3_clicked():
 	picam2.configure(config)
 	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
 	picam2.start()
+	
 	button4.setEnabled(True)
 	button5.setEnabled(True)
 	
@@ -82,6 +119,8 @@ def on_button3_clicked():
 def on_button4_clicked():
 	global mode
 	global actual_size
+	global overlay
+	#overlay = np.zeros((864, 1536, 4), dtype=np.uint8)
 	actual_size = [1536, 864]
 	label.setText('1536 x 864')
 	button4.setEnabled(False)
@@ -92,13 +131,20 @@ def on_button4_clicked():
 	picam2.configure(config)
 	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
 	picam2.start()
+	#qpicamera2.set_overlay(overlay)
 	button3.setEnabled(True)
 	button5.setEnabled(True)
 
 	
+	
+	
 def on_button5_clicked():
 	global mode
 	global actual_size
+	global overlay
+	#x1, y1, x2, y2 = 0, 0, 0, 0
+	#overlay = np.zeros((1296, 2304, 4), dtype=np.uint8)
+	#qpicamera2.set_overlay(overlay)
 	actual_size = [2304, 1296]
 	label.setText('2304 x 1296')
 	button5.setEnabled(False)
@@ -110,6 +156,7 @@ def on_button5_clicked():
 	picam2.configure(config)
 	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
 	picam2.start()
+	qpicamera2.set_overlay(overlay)
 	button3.setEnabled(True)
 	button4.setEnabled(True)
 	
@@ -123,53 +170,30 @@ def on_button6_clicked():
 	
 	
 def on_button7_clicked():
-	
-	
-	'''
-	for _ in range(int(capture_time*frame_rate)):
-		picam2.capture_file(f'/home/bob/images/img{str(time.time())[-4:]}.jpg', signal_function=qpicamera2.signal_done)
-	'''
-	
-	
-	global recording
-	global file_name
-	global t_start
-	global t_end
-	if not recording:
-		encoder = H264Encoder(10000000)
-		file_name = str(time.time())[-4:]
-		output = FileOutput(f'test{file_name}.h264')
-		picam2.start_encoder(encoder, output)
-		t_start = time.time()
-		button7.setText('stop recording')
-		recording = True
-	else:
-		picam2.stop_encoder()
-		t_end = time.time()
-		button7.setText('start recording')
-		recording = False
-		path = os.getcwd()
-		vid = cv2.VideoCapture(f'{path}/test{file_name}.h264')
-		count = 0
-		success = 1
-		while success:
-			try:
-				success, image = vid.read()
-				#print(image)
-				cv2.imwrite(f'/home/bob/images/img{str(time.time())[-4:]}.jpg', image)
-				count += 1
-			except:
-				break
-		fps = count/(t_end - t_start)
-		print(count)
-		print(f' Video FPS: {fps}')
+	global path
+	cwd = os.getcwd()
+	path = f'{cwd}/{dir_name}'
+	os.mkdir(path)
+	worker.moveToThread(thread)
+	thread.started.connect(worker.run)
+	worker.finished.connect(thread.quit)
+	thread.start()
+
 	
 def on_x1_changed(val):
 	global x1
+	ratio = 1280 / actual_size[0] 
+	print(ratio)
+	overlay[:1280, math.floor(x1*ratio)] = (0, 0, 0, 0)
 	try:
+		
 		x = int(val)
-		if(x >= 0 and x <= 4608):
+		print(x)
+		if(x >= 0 and x <= actual_size[0]):
 			x1 = x
+			overlay[:1280, math.floor(x*ratio)] = (0, 0, 0, 64)
+			qpicamera2.set_overlay(overlay)
+			print('hello')
 			print(f'{x1}, {x2}, {y1}, {y2}')
 	except:
 		pass
@@ -178,7 +202,7 @@ def on_x2_changed(val):
 	global x2
 	try:
 		x = int(val)
-		if(x >= 0 and x <= 4608):
+		if(x >= x1 and x <= actual_size[0]):
 			x2 = x
 			print(f'{x1}, {x2}, {y1}, {y2}')
 	except:
@@ -189,7 +213,7 @@ def on_y1_changed(val):
 	global y1
 	try:
 		x = int(val)
-		if(x >= 0 and x <= 2592):
+		if(x >= 0 and x <= actual_size[1]):
 			y1 = x
 			print(f'{x1}, {x2}, {y1}, {y2}')
 	except:
@@ -199,7 +223,7 @@ def on_y2_changed(val):
 	global y2
 	try:
 		x = int(val)
-		if(x >= 0 and x <= 2592):
+		if(x >= y1 and x <= actual_size[1]):
 			y2 = x
 			print(f'{x1}, {x2}, {y1}, {y2}')
 	except:
@@ -238,8 +262,17 @@ def zoom_done(job):
 		label.setText(f'{actual_size[0]} x {actual_size[1]}')
 	if cur_task == 'cropp':
 		pass
+		
+
+
+def on_dir_changed(text):
+	global dir_name
+	dir_name = text
 	
 	
+def on_file_changed(text):
+	global file_name
+	file_name = text
 
 def value_changed(i):
 	try:
@@ -251,6 +284,16 @@ def value_changed(i):
 			
 	except:
 		pass
+		
+def on_time_changed(i):
+	try:
+		e = int(i)
+		if(e >= 0):
+			global capture_time
+			capture_time = e
+			
+	except:
+		pass		
 
 
 def text_changed(val):
@@ -286,6 +329,7 @@ def frame_text_changed(val):
 
 
 qpicamera2 = QGlPicamera2(picam2, width=1280, height=720, keep_ar=True)
+
 
 button1 = QPushButton("Click to zoom in")
 window = QWidget()
@@ -360,10 +404,28 @@ cropper.clicked.connect(on_cropper_clicked)
 label = QLabel('1532 x 864')
 label.setFixedSize(300, 20)
 
+dir_edit = QLineEdit()
+dir_edit.setMaxLength(30)
+dir_edit.setPlaceholderText('Change directory name')
+dir_edit.textEdited.connect(on_dir_changed)
+
+file_edit = QLineEdit()
+file_edit.setMaxLength(30)
+file_edit.setPlaceholderText('Change file name')
+file_edit.textEdited.connect(on_file_changed)
+
+time_edit = QLineEdit()
+time_edit.setMaxLength(30)
+time_edit.setPlaceholderText('Change capture time')
+time_edit.textEdited.connect(on_time_changed)
+
 
 layout = QHBoxLayout()
 
 layout_h = QHBoxLayout()
+layout_h.addWidget(dir_edit)
+layout_h.addWidget(file_edit)
+layout_h.addWidget(time_edit)
 layout_h.addWidget(button7)
 
 layout_h2 = QHBoxLayout()
@@ -401,11 +463,16 @@ layout_v.addLayout(layout_h2)
 
 
 
+
+
 qpicamera2.setWindowTitle("sigma")
 window.setLayout(layout)
 window.resize(800, 800)
 picam2.start()
+qpicamera2.set_overlay(overlay)
 window.show()
+
+
 app.exec()
 
 
