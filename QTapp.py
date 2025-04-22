@@ -16,6 +16,9 @@ import numpy as np
 import math
 
 picam2 = Picamera2()
+cropped = False
+modeNum = 0
+still = 1000
 t_start = 0
 t_end = 0
 recording = False
@@ -24,7 +27,7 @@ cur_task = ''
 dir_name = 'images'
 path = ''
 app = QApplication([])
-overlay = np.zeros((720, 1280, 4), dtype=np.uint8)
+overlay = np.zeros((721, 1281, 4), dtype=np.uint8)
 capture_time = 1
 scale = 1.05
 target = 0
@@ -37,9 +40,9 @@ frame_rate = 30
 lens_pos = 32
 print(picam2.camera_controls['LensPosition'])
 x1 = 0
-x2 = 4608
+x2 = 1531
 y1 = 0
-y2 = 2592
+y2 = 863
 mode = picam2.sensor_modes[0]
 actual_size = [i for i in mode['size']]
 config = picam2.create_preview_configuration(main={'size' : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
@@ -54,24 +57,48 @@ class Worker(QObject):
     progress = pyqtSignal(int)
     
     def run(self):
+        count = 1
         change_config(picam2.create_still_configuration(main={'size' : actual_size}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))
        
-        t_end = time.time() + 5.0
+        t_end = time.time() + capture_time *1.0
         while time.time() <= t_end:
-            picam2.capture_file(f'{path}/{file_name + str(time.time())[-4:]}.jpg')
+            ts = time.time()
+            picam2.capture_file(f'{path}/{file_name + str(count)}.jpg')
+            te = time.time()
+            fps = (1/(te-ts))
+            label2.setText(f'FPS: {int(fps)}')
+            count += 1
          
         change_config(picam2.create_preview_configuration(main={"size" : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))   
         
         self.finished.emit()
+        
 
+        
+    def one_img(self):
+        change_config(picam2.create_still_configuration(main={'size' : actual_size}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))
+        picam2.capture_file(f'{path}/{file_name + str(still)}.jpg')
+        change_config(picam2.create_preview_configuration(main={"size" : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))
+        self.finished.emit()
+		
+		
 thread = QThread()
 worker = Worker()
+
+
 def change_config(cfg):
     picam2.stop()
     picam2.configure(cfg)
-    picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
+    offset = [x1, y1]
+    size = [x2-x1, y2-y1]
+    if cropped:	
+        picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos, 'ScalerCrop' : offset+size})
+    else:
+        picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
+    
     picam2.start()
-
+    
+    print(picam2.capture_metadata())
 
 
 def on_button1_clicked():
@@ -96,10 +123,13 @@ def on_button2_clicked():
 
 def on_button3_clicked():
 	global mode
+	global modeNum
 	global actual_size
 	global overlay
-	#overlay = np.zeros((2592, 4608, 4), dtype=np.uint8)
-	#qpicamera2.set_overlay(overlay)
+	global cropped
+	cropped = False
+	modeNum = 2
+	cropper.setEnabled(True)
 	actual_size = [4608, 2592]
 	label.setText('4608 x 2592')
 	button3.setEnabled(False)
@@ -118,9 +148,13 @@ def on_button3_clicked():
 	
 def on_button4_clicked():
 	global mode
+	global modeNum
 	global actual_size
 	global overlay
-	#overlay = np.zeros((864, 1536, 4), dtype=np.uint8)
+	global cropped
+	cropped = False
+	cropper.setEnabled(False)
+	modeNum = 0
 	actual_size = [1536, 864]
 	label.setText('1536 x 864')
 	button4.setEnabled(False)
@@ -131,7 +165,7 @@ def on_button4_clicked():
 	picam2.configure(config)
 	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
 	picam2.start()
-	#qpicamera2.set_overlay(overlay)
+
 	button3.setEnabled(True)
 	button5.setEnabled(True)
 
@@ -140,11 +174,13 @@ def on_button4_clicked():
 	
 def on_button5_clicked():
 	global mode
+	global modeNum
 	global actual_size
 	global overlay
-	#x1, y1, x2, y2 = 0, 0, 0, 0
-	#overlay = np.zeros((1296, 2304, 4), dtype=np.uint8)
-	#qpicamera2.set_overlay(overlay)
+	global cropped 
+	cropped = False
+	cropper.setEnabled(False)
+	modeNum = 1
 	actual_size = [2304, 1296]
 	label.setText('2304 x 1296')
 	button5.setEnabled(False)
@@ -163,17 +199,36 @@ def on_button5_clicked():
 	
 def on_button6_clicked():
 	global cur_task
+	global still
 	cur_task = 'fr'
-	cfg = picam2.create_still_configuration(main={'size' : actual_size}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+	cfg = picam2.create_still_configuration(main={'size' : actual_size}, transform=Transform(vflip=False))
 	
-	picam2.switch_mode_and_capture_file(cfg, f'/home/bob/images/img{str(time.time())[-4:]}.jpg', signal_function=qpicamera2.signal_done)
+	global path
+	cwd = os.getcwd()
+	try:
+		path = f'{cwd}/{dir_name}'
+		os.mkdir(path)
+		#picam2.switch_mode_and_capture_file(cfg, f'{path}/{file_name + str(still)}.jpg', signal_function=qpicamera2.signal_done)
+	except:
+		pass
+		#picam2.switch_mode_and_capture_file(cfg, f'{path}/{file_name + str(still)}.jpg', signal_function=qpicamera2.signal_done)
+	
+	worker.moveToThread(thread)
+	thread.started.connect(worker.one_img)
+	worker.finished.connect(thread.quit)
+	thread.start()
+	
+	still += 1
 	
 	
 def on_button7_clicked():
 	global path
 	cwd = os.getcwd()
-	path = f'{cwd}/{dir_name}'
-	os.mkdir(path)
+	try:
+		path = f'{cwd}/{dir_name}'
+		os.mkdir(path)
+	except:
+		pass
 	worker.moveToThread(thread)
 	thread.started.connect(worker.run)
 	worker.finished.connect(thread.quit)
@@ -181,64 +236,106 @@ def on_button7_clicked():
 
 	
 def on_x1_changed(val):
-	global x1
-	ratio = 1280 / actual_size[0] 
-	print(ratio)
-	overlay[:1280, math.floor(x1*ratio)] = (0, 0, 0, 0)
-	try:
+	if(modeNum == 2):
+		global x1
+		ratio = 1280 / actual_size[0] 
+		#print(ratio)
 		
-		x = int(val)
-		print(x)
-		if(x >= 0 and x <= actual_size[0]):
-			x1 = x
-			overlay[:1280, math.floor(x*ratio)] = (0, 0, 0, 64)
-			qpicamera2.set_overlay(overlay)
-			print('hello')
-			print(f'{x1}, {x2}, {y1}, {y2}')
-	except:
-		pass
+		try:
+			overlay[:1280, math.floor(x1*ratio)] = (0, 0, 0, 0)
+			x = int(val)
+			print(x)
+			if(x >= 0 and x <= actual_size[0]):
+				print("LEBRON")
+				x1 = x
+				overlay[:1280, math.floor(x*ratio)] = (255, 0, 0, 500)
+				qpicamera2.set_overlay(overlay)
+				print('hello')
+				print(f'{x1}, {x2}, {y1}, {y2}')
+		except:
+			pass
 		
 def on_x2_changed(val):
-	global x2
-	try:
-		x = int(val)
-		if(x >= x1 and x <= actual_size[0]):
+	if(modeNum == 2):
+		global x2
+		
+		ratio = 1280 / actual_size[0] 
+		
+		#print(ratio)
+		
+		try:
+			overlay[:1280, math.floor(x2*ratio)] = (0, 0, 0, 0)
+			x = int(val)
 			x2 = x
-			print(f'{x1}, {x2}, {y1}, {y2}')
-	except:
-		pass
+			
+			if(x >= x1 and x <= actual_size[0]):
+				print('CHECKOINT')
+				overlay[:1280, math.floor(x*ratio)] = (255, 0, 0, 500)
+				qpicamera2.set_overlay(overlay)
+				print('hello')
+				print(f'{x1}, {x2}, {y1}, {y2}')
+		except:
+			pass
 	
 	
 def on_y1_changed(val):
-	global y1
-	try:
-		x = int(val)
-		if(x >= 0 and x <= actual_size[1]):
-			y1 = x
-			print(f'{x1}, {x2}, {y1}, {y2}')
-	except:
-		pass
+	if(modeNum == 2):
+		global y1
+		ratio = 720 / actual_size[1] 
+		print(ratio)
+		
+		try:
+			overlay[math.floor(y1*ratio), :1280] = (0, 0, 0, 0)
+			x = int(val)
+			print(x)
+			if(x >= 0 and x <= actual_size[1]):
+				y1 = x
+				overlay[math.floor(x*ratio), :1280] = (255, 0, 0, 500)
+				qpicamera2.set_overlay(overlay)
+				
+		except:
+			pass
 		
 def on_y2_changed(val):
-	global y2
-	try:
-		x = int(val)
-		if(x >= y1 and x <= actual_size[1]):
-			y2 = x
-			print(f'{x1}, {x2}, {y1}, {y2}')
-	except:
-		pass
+	if(modeNum == 2):
+		global y2
+		ratio = 720 / actual_size[1] 
+		print(ratio)
+		try:
+			overlay[math.floor(y2*ratio), :1280] = (0, 0, 0, 0)
+			x = int(val)
+			print(x)
+			if(x >= y1 and x <= actual_size[1]):
+				y2 = x
+				overlay[math.floor(x*ratio), :1280] = (255, 0, 0, 500)
+				qpicamera2.set_overlay(overlay)
+				print('hello')
+				print(f'{x1}, {x2}, {y1}, {y2}')
+		except:
+			pass
 	
 
 def on_cropper_clicked():
 	global cur_task
+	global actual_size
+	global cropped
+	cropped = True
 	cur_task = 'crop'
+	ratioY = 720 / actual_size[1] 
+	ratioX = 1280 / actual_size[0] 
+	overlay[math.floor(y2*ratioY), :1280] = (0, 0, 0, 0)
+	overlay[math.floor(y1*ratioY), :1280] = (0, 0, 0, 0)
+	overlay[:1280, math.floor(x1*ratioX)] = (0, 0, 0, 0)
+	overlay[:1280, math.floor(x2*ratioX)] = (0, 0, 0, 0)
+	qpicamera2.set_overlay(overlay)
 	try:
-		full_res = picam2.camera_properties['PixelArraySize']
 		offset = [x1, y1]
 		size = [x2-x1, y2-y1]
+		actual_size = size
+		print(offset + size)
 		picam2.set_controls({'ScalerCrop' : offset+size})
 		label.setText(f'{size[0]} x {size[1]}')
+		
 	except:
 		pass
 		
@@ -260,9 +357,6 @@ def zoom_done(job):
 		button2.setEnabled(True)
 		actual_size = [int(scale * actual_size[0]), int(scale * actual_size[1])]
 		label.setText(f'{actual_size[0]} x {actual_size[1]}')
-	if cur_task == 'cropp':
-		pass
-		
 
 
 def on_dir_changed(text):
@@ -320,7 +414,7 @@ def frame_text_changed(val):
 		if(f > 0):
 			global frame_rate
 			frame_rate = f
-			picam2.set_controls({'FrameRate' : f})	
+
 	except:
 		pass
 		
@@ -399,10 +493,14 @@ y2edit.textEdited.connect(on_y2_changed)
 
 cropper = QPushButton('Crop Image')
 cropper.clicked.connect(on_cropper_clicked)
+cropper.setEnabled(False)
 
 
 label = QLabel('1532 x 864')
-label.setFixedSize(300, 20)
+label.setFixedSize(150, 20)
+
+label2 = QLabel('FPS: ')
+label2.setFixedSize(150, 20)
 
 dir_edit = QLineEdit()
 dir_edit.setMaxLength(30)
@@ -436,7 +534,9 @@ layout_h2.addWidget(y2edit)
 layout_h2.addWidget(cropper)
 
 
-
+layout_h3 = QHBoxLayout()
+layout_h3.addWidget(label)
+layout_h3.addWidget(label2)
 
 layout_v3 = QHBoxLayout()
 layout_v3.addWidget(button4)
@@ -449,7 +549,7 @@ layout_v4.addWidget(button6)
 
 layout_v = QVBoxLayout()
 layout_v.setSpacing(10)
-layout_v.addWidget(label)
+layout_v.addLayout(layout_h3)
 layout_v.addWidget(qpicamera2)
 layout_v.addWidget(button1)
 layout_v.addWidget(button2)
