@@ -11,12 +11,24 @@ import time
 import datetime
 import sys
 import os
+from PIL import Image
 from PyQt5.QtCore import QObject, QThread, pyqtSignal
 import numpy as np
 import math
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from matplotlib import style
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
+style.use('fivethirtyeight')
+fig, ax = plt.subplots()
+canvas = FigureCanvas(fig)
+matplotlib.use('Qt5Agg')
 picam2 = Picamera2()
 cropped = False
+xs = []
+ys = []
 modeNum = 0
 still = 1000
 t_start = 0
@@ -32,20 +44,20 @@ capture_time = 1
 scale = 1.05
 target = 0
 cur_task = ''
-print(picam2.camera_controls['ExposureTime'])
+
 min_exp, max_exp, def_exp = picam2.camera_controls['ExposureTime']
 exposure_time = (max_exp + min_exp) // 2
 scale = 1.05
 frame_rate = 30
 lens_pos = 32
-print(picam2.camera_controls['LensPosition'])
+
 x1 = 0
 x2 = 1531
 y1 = 0
 y2 = 863
 mode = picam2.sensor_modes[0]
 actual_size = [i for i in mode['size']]
-config = picam2.create_preview_configuration(main={'size' : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
 picam2.align_configuration(config)
 picam2.configure(config)
 picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, 'LensPosition' : lens_pos})
@@ -54,7 +66,7 @@ picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, '
 
 class Worker(QObject):
     finished = pyqtSignal()
-    progress = pyqtSignal(int)
+    
     
     def run(self):
         count = 1
@@ -63,13 +75,18 @@ class Worker(QObject):
         t_end = time.time() + capture_time *1.0
         while time.time() <= t_end:
             ts = time.time()
-            picam2.capture_file(f'{path}/{file_name + str(count)}.jpg')
+           
+            picam2.capture_file(f'{dir_name}/{file_name + str(count)}.jpg')
             te = time.time()
             fps = (1/(te-ts))
             label2.setText(f'FPS: {int(fps)}')
             count += 1
+            
+           
+        
+            
          
-        change_config(picam2.create_preview_configuration(main={"size" : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))   
+        change_config(picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))   
         
         self.finished.emit()
         
@@ -77,13 +94,56 @@ class Worker(QObject):
         
     def one_img(self):
         change_config(picam2.create_still_configuration(main={'size' : actual_size}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))
-        picam2.capture_file(f'{path}/{file_name + str(still)}.jpg')
-        change_config(picam2.create_preview_configuration(main={"size" : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))
+ 
+        picam2.capture_file(f'{dir_name}/{file_name + str(still)}.jpg')
+        change_config(picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))
+            
+        
+        
+        
+        self.finished.emit()
+        
+        
+        
+class Worker2(QObject):
+    finished = pyqtSignal()
+    
+
+    
+    
+    def run(self):
+        global xs
+        global ys
+        global ax
+        #ani = animation.FuncAnimation(fig, self.animate, interval=1000)
+       
+        #change_config(picam2.create_still_configuration(main={'size' : actual_size}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))
+       
+        count = 1
+        while True:
+           
+            time.sleep(1)
+            i = picam2.capture_array(f'main')
+            
+            xs.append(count)
+            if(len(xs) > 10):
+                 xs.pop(0)
+            count += 1
+            mean_intensity = np.mean(i)
+            ys.append(mean_intensity)
+            if(len(ys) > 10):
+                ys.pop(0)
+          
+            
+            #print(f'MEAN: {mean_intensity}')
+            
         self.finished.emit()
 		
 		
 thread = QThread()
+thread2 = QThread()
 worker = Worker()
+worker2 = Worker2()
 
 
 def change_config(cfg):
@@ -98,7 +158,7 @@ def change_config(cfg):
     
     picam2.start()
     
-    print(picam2.capture_metadata())
+  
 
 
 def on_button1_clicked():
@@ -135,8 +195,8 @@ def on_button3_clicked():
 	button3.setEnabled(False)
 	picam2.stop()
 	mode = picam2.sensor_modes[2]
-	print(mode)
-	config = picam2.create_preview_configuration(main={'size' : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+	
+	config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
 	picam2.align_configuration(config)
 	picam2.configure(config)
 	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
@@ -160,7 +220,7 @@ def on_button4_clicked():
 	button4.setEnabled(False)
 	picam2.stop()
 	mode = picam2.sensor_modes[0]
-	config = picam2.create_preview_configuration(main={'size' : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+	config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
 	picam2.align_configuration(config)
 	picam2.configure(config)
 	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
@@ -186,8 +246,8 @@ def on_button5_clicked():
 	button5.setEnabled(False)
 	picam2.stop()
 	mode = picam2.sensor_modes[1]
-	print(mode)
-	config = picam2.create_preview_configuration(main={'size' : (1280, 720)}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+
+	config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
 	picam2.align_configuration(config)
 	picam2.configure(config)
 	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
@@ -244,14 +304,13 @@ def on_x1_changed(val):
 		try:
 			overlay[:1280, math.floor(x1*ratio)] = (0, 0, 0, 0)
 			x = int(val)
-			print(x)
+			
 			if(x >= 0 and x <= actual_size[0]):
-				print("LEBRON")
+				
 				x1 = x
 				overlay[:1280, math.floor(x*ratio)] = (255, 0, 0, 500)
 				qpicamera2.set_overlay(overlay)
-				print('hello')
-				print(f'{x1}, {x2}, {y1}, {y2}')
+			
 		except:
 			pass
 		
@@ -261,7 +320,7 @@ def on_x2_changed(val):
 		
 		ratio = 1280 / actual_size[0] 
 		
-		#print(ratio)
+		
 		
 		try:
 			overlay[:1280, math.floor(x2*ratio)] = (0, 0, 0, 0)
@@ -269,11 +328,11 @@ def on_x2_changed(val):
 			x2 = x
 			
 			if(x >= x1 and x <= actual_size[0]):
-				print('CHECKOINT')
+				
 				overlay[:1280, math.floor(x*ratio)] = (255, 0, 0, 500)
 				qpicamera2.set_overlay(overlay)
-				print('hello')
-				print(f'{x1}, {x2}, {y1}, {y2}')
+				
+			
 		except:
 			pass
 	
@@ -282,12 +341,12 @@ def on_y1_changed(val):
 	if(modeNum == 2):
 		global y1
 		ratio = 720 / actual_size[1] 
-		print(ratio)
+		
 		
 		try:
 			overlay[math.floor(y1*ratio), :1280] = (0, 0, 0, 0)
 			x = int(val)
-			print(x)
+			
 			if(x >= 0 and x <= actual_size[1]):
 				y1 = x
 				overlay[math.floor(x*ratio), :1280] = (255, 0, 0, 500)
@@ -300,17 +359,16 @@ def on_y2_changed(val):
 	if(modeNum == 2):
 		global y2
 		ratio = 720 / actual_size[1] 
-		print(ratio)
+		
 		try:
 			overlay[math.floor(y2*ratio), :1280] = (0, 0, 0, 0)
 			x = int(val)
-			print(x)
+			
 			if(x >= y1 and x <= actual_size[1]):
 				y2 = x
 				overlay[math.floor(x*ratio), :1280] = (255, 0, 0, 500)
 				qpicamera2.set_overlay(overlay)
-				print('hello')
-				print(f'{x1}, {x2}, {y1}, {y2}')
+				
 		except:
 			pass
 	
@@ -332,7 +390,7 @@ def on_cropper_clicked():
 		offset = [x1, y1]
 		size = [x2-x1, y2-y1]
 		actual_size = size
-		print(offset + size)
+		
 		picam2.set_controls({'ScalerCrop' : offset+size})
 		label.setText(f'{size[0]} x {size[1]}')
 		
@@ -349,7 +407,7 @@ def zoom_done(job):
 	if cur_task == 'zoom':
 		full_res = picam2.camera_properties['PixelArraySize']
 		size = result['ScalerCrop'][2:]
-		print('SIZE: ' + str(size))
+		
 		newSize = [int(s * scale) for s in size]
 		offset = [(r - s) // 2 for r, s in zip(full_res, newSize)]
 		picam2.set_controls({'ScalerCrop' : offset+newSize})
@@ -359,9 +417,17 @@ def zoom_done(job):
 		label.setText(f'{actual_size[0]} x {actual_size[1]}')
 
 
-def on_dir_changed(text):
+def on_dir_changed():
 	global dir_name
-	dir_name = text
+	options = QFileDialog.Options()
+	options |= QFileDialog.DontUseNativeDialog
+	directory = QFileDialog.getExistingDirectory(dir_edit, "Select Directory", os.getcwd(), options=options,)
+	if directory:
+		print(directory)
+		dir_name = directory
+		print(dir_name)
+		dir_edit.setText(directory)
+		
 	
 	
 def on_file_changed(text):
@@ -392,7 +458,7 @@ def on_time_changed(i):
 
 def text_changed(val):
 	try:
-		print(val)
+		
 		global lens_pos
 		val = float(val)/100.0
 		if 1.0/float(val) <= 32 and 1.0/float(val) > 0:
@@ -418,11 +484,15 @@ def frame_text_changed(val):
 	except:
 		pass
 		
+def animate(i):
+    ax.clear()
+    ax.set_title("Intensity vs. Time")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Intensity")
+    ax.plot(xs, ys)		
 
-		
 
-
-qpicamera2 = QGlPicamera2(picam2, width=1280, height=720, keep_ar=True)
+qpicamera2 = QGlPicamera2(picam2, width=1280, height=720, keep_ar=False)
 
 
 button1 = QPushButton("Click to zoom in")
@@ -496,16 +566,20 @@ cropper.clicked.connect(on_cropper_clicked)
 cropper.setEnabled(False)
 
 
-label = QLabel('1532 x 864')
+label = QLabel('1536 x 864')
 label.setFixedSize(150, 20)
 
 label2 = QLabel('FPS: ')
 label2.setFixedSize(150, 20)
 
+'''
 dir_edit = QLineEdit()
 dir_edit.setMaxLength(30)
 dir_edit.setPlaceholderText('Change directory name')
 dir_edit.textEdited.connect(on_dir_changed)
+'''
+dir_edit = QPushButton('select directory')
+dir_edit.clicked.connect(on_dir_changed)
 
 file_edit = QLineEdit()
 file_edit.setMaxLength(30)
@@ -561,6 +635,14 @@ layout.addLayout(layout_v)
 layout_v.addLayout(layout_h)
 layout_v.addLayout(layout_h2)
 
+window2 = QWidget()
+layout5 = QHBoxLayout()
+layout5.addWidget(canvas)
+
+window2.setLayout(layout5)
+window2.resize(700, 700)
+#canvas.setFixedSize(300, 700)
+#layout.addWidget(canvas)
 
 
 
@@ -571,8 +653,12 @@ window.resize(800, 800)
 picam2.start()
 qpicamera2.set_overlay(overlay)
 window.show()
-
-
+window2.show()
+worker2.moveToThread(thread2)
+thread2.started.connect(worker2.run)
+worker2.finished.connect(thread2.quit)
+thread2.start()
+ani = animation.FuncAnimation(fig, animate, interval=1000)
 app.exec()
 
 
