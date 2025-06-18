@@ -50,14 +50,14 @@ exposure_time = (max_exp + min_exp) // 2
 scale = 1.05
 frame_rate = 30
 lens_pos = 32
-
+stills = 1
 x1 = 0
-x2 = 1531
+x2 = 1536
 y1 = 0
-y2 = 863
+y2 = 864
 mode = picam2.sensor_modes[0]
 actual_size = [i for i in mode['size']]
-config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False), raw={'format' : picam2.sensor_modes[0]['unpacked'], 'size' : picam2.sensor_modes[0]['size']})
 picam2.align_configuration(config)
 picam2.configure(config)
 picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, 'LensPosition' : lens_pos})
@@ -70,10 +70,13 @@ class Worker(QObject):
     
     def run(self):
         store = []
+        ratioX = (4098//1536)
+        ratioY = (2592//864)
         count = 1
-        change_config(picam2.create_still_configuration(main={'size' : actual_size}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))
-        time.sleep(5)
+        #change_config(picam2.create_still_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False), raw={'format' : picam2.sensor_modes[0]['unpacked'], 'size' : mode['size']}))
+        time.sleep(3)
         t_end = time.time() + capture_time *1.0
+        print('checkpoint ')
         while time.time() <= t_end:
             ts = time.time()
             r = picam2.capture_array('raw')
@@ -84,32 +87,36 @@ class Worker(QObject):
             count += 1
             
         for ind, p in enumerate(store):
-            i = np.array(p[y1 : y2, x1*2 : x2*2])
-            i.tofile(f'{dir_name}/{file_name + str(ind+1)}.raw')
+	
+            
+            if cropped:
+                p = np.array(p[y1 : y2 , x1*2 : x2*2])
+            #print(p.shape)
+            p.tofile(f'{dir_name}/{file_name + str(ind+1)}.raw')
            
         
         #print(f'len: {len(store)}')
         print(f'actual fps: {count/capture_time}')
          
-        change_config(picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))   
+       
   
         self.finished.emit()
         
 
         
-    def one_img(self):
-        change_config(picam2.create_still_configuration(main={'size' : actual_size}, sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))
-        arr = np.array(picam2.capture_array('raw')[y1 : y2, x1*2 : x2*2])
-        arr.tofile(f'{dir_name}/{file_name + str(still)}.raw')
-        #picam2.capture_file(f'{dir_name}/{file_name + str(still)}.jpg')
-        change_config(picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False)))
-            
+class Worker3(QObject):
+	finished = pyqtSignal()
+	
+	def run(self):
+		
+		arr = picam2.capture_array('raw')
+		if cropped:
+			arr = np.array(arr[y1 : y2, x1*2 : x2*2])
+		#print(arr.shape)   
+		arr.tofile(f'{dir_name}/{file_name + str(still)}.raw') 
+		
         
-        
-        
-        self.finished.emit()
-        
-        
+		self.finished.emit()
         
 class Worker2(QObject):
     finished = pyqtSignal()
@@ -126,18 +133,20 @@ class Worker2(QObject):
        
         count = 1
         while True:
-            
-            time.sleep(1)
-            r = picam2.capture_array(f'raw')
-            i = r[y1 : y2 , x1*2 : x2*2]
-            xs.append(count)
-            if(len(xs) > 10):
-                xs.pop(0)
-            count += 1
-            mean_intensity = np.mean(i)
-            ys.append(mean_intensity)
-            if(len(ys) > 10):
-                ys.pop(0)
+            if not recording:
+                #print('done')
+                time.sleep(1)
+                i = picam2.capture_array(f'raw')
+                if cropped:
+                    i = i[y1 : y2 , x1*2 : x2*2]
+                xs.append(count)
+                if(len(xs) > 10):
+                    xs.pop(0)
+                count += 1
+                mean_intensity = np.mean(i)
+                ys.append(mean_intensity)
+                if(len(ys) > 10):
+                    ys.pop(0)
                 
         self.finished.emit()
           
@@ -149,9 +158,10 @@ class Worker2(QObject):
 		
 thread = QThread()
 thread2 = QThread()
+thread3 = QThread()
 worker = Worker()
 worker2 = Worker2()
-
+worker3 = Worker3()
 
 def change_config(cfg):
     picam2.stop()
@@ -202,8 +212,10 @@ def on_button3_clicked():
 	button3.setEnabled(False)
 	picam2.stop()
 	mode = picam2.sensor_modes[2]
+	button1.setEnabled(True)
+	button2.setEnabled(True)
 	
-	config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+	config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False), raw={'format' : picam2.sensor_modes[2]['unpacked'], 'size' : mode['size']})
 	picam2.align_configuration(config)
 	picam2.configure(config)
 	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
@@ -227,11 +239,13 @@ def on_button4_clicked():
 	button4.setEnabled(False)
 	picam2.stop()
 	mode = picam2.sensor_modes[0]
-	config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+	config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False), raw={'format' : picam2.sensor_modes[0]['unpacked'], 'size' : mode['size']})
 	picam2.align_configuration(config)
 	picam2.configure(config)
 	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
 	picam2.start()
+	button1.setEnabled(False)
+	button2.setEnabled(False)
 
 	button3.setEnabled(True)
 	button5.setEnabled(True)
@@ -253,8 +267,9 @@ def on_button5_clicked():
 	button5.setEnabled(False)
 	picam2.stop()
 	mode = picam2.sensor_modes[1]
-
-	config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
+	button1.setEnabled(False)
+	button2.setEnabled(False)
+	config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False), raw={'format' : picam2.sensor_modes[1]['unpacked'], 'size' : mode['size']})
 	picam2.align_configuration(config)
 	picam2.configure(config)
 	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
@@ -280,18 +295,22 @@ def on_button6_clicked():
 		pass
 		#picam2.switch_mode_and_capture_file(cfg, f'{path}/{file_name + str(still)}.jpg', signal_function=qpicamera2.signal_done)
 	
-	worker.moveToThread(thread)
-	thread.started.connect(worker.one_img)
-	worker.finished.connect(thread.quit)
-	thread.start()
-	
+	worker3.moveToThread(thread3)
+	thread3.started.connect(worker3.run)
+	worker3.finished.connect(thread3.quit)
+	thread3.start()
 	still += 1
+	
+	
 	
 	
 def on_button7_clicked():
 	global path
 	global ani
+	global recording 
+	recording = True
 	ani.pause()
+	
 	cwd = os.getcwd()
 	try:
 		path = f'{cwd}/{dir_name}'
@@ -301,10 +320,13 @@ def on_button7_clicked():
 	worker.moveToThread(thread)
 	thread.started.connect(worker.run)
 	worker.finished.connect(on_thread_finish)
+	worker.finished.connect(thread.quit)
 	thread.start()
 
 def on_thread_finish():
 	global ani
+	global recording 
+	recording = False
 	ani.resume()
 	
 def on_x1_changed(val):
@@ -400,23 +422,12 @@ def on_cropper_clicked():
 	overlay[:1280, math.floor(x1*ratioX)] = (0, 0, 0, 0)
 	overlay[:1280, math.floor(x2*ratioX)] = (0, 0, 0, 0)
 	qpicamera2.set_overlay(overlay)
-	cropped = False
-	cropper.setEnabled(False)
-	modeNum = 0
-	actual_size = [1536, 864]
-	label.setText('1536 x 864')
-	picam2.stop()
-	mode = picam2.sensor_modes[0]
-	config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False))
-	picam2.align_configuration(config)
-	picam2.configure(config)
-	picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, "LensPosition" : lens_pos})
-	picam2.start()
 	cropped = True
 	cur_task = 'crop'
 
 	try:
-		offset = [x1, y1]
+		full_res = picam2.sensor_resolution
+		offset = [x1,y1]
 		size = [x2-x1, y2-y1]
 		actual_size = size
 		
@@ -432,6 +443,7 @@ def on_cropper_clicked():
 def zoom_done(job):
 	global cur_task
 	global actual_size
+	global x1, y1, x2, y2
 	result = picam2.wait(job)
 	if cur_task == 'zoom':
 		full_res = picam2.camera_properties['PixelArraySize']
@@ -442,7 +454,12 @@ def zoom_done(job):
 		picam2.set_controls({'ScalerCrop' : offset+newSize})
 		button1.setEnabled(True)
 		button2.setEnabled(True)
+		x1 = 4608 - (scale*actual_size[0])
+		x2 = scale*actual_size[size]
+		y1 = 2592 - (scale*actual_size[1])
+		y2 = scale*actual_size[1]
 		actual_size = [int(scale * actual_size[0]), int(scale * actual_size[1])]
+		
 		label.setText(f'{actual_size[0]} x {actual_size[1]}')
 
 
@@ -532,7 +549,8 @@ button1.clicked.connect(on_button1_clicked)
 
 button2 = QPushButton("Click to zoom out")
 button2.clicked.connect(on_button2_clicked)
-
+button1.setEnabled(False)
+button2.setEnabled(False)
 button3 = QPushButton("11.94 Mp")
 button3.clicked.connect(on_button3_clicked)
 
@@ -592,7 +610,7 @@ y2edit.textEdited.connect(on_y2_changed)
 
 cropper = QPushButton('Crop Image')
 cropper.clicked.connect(on_cropper_clicked)
-cropper.setEnabled(False)
+
 
 
 label = QLabel('1536 x 864')
@@ -654,8 +672,7 @@ layout_v = QVBoxLayout()
 layout_v.setSpacing(10)
 layout_v.addLayout(layout_h3)
 layout_v.addWidget(qpicamera2)
-layout_v.addWidget(button1)
-layout_v.addWidget(button2)
+
 layout_v.addLayout(layout_v3)
 layout_v.addWidget(focalDistEdit)
 layout_v.addWidget(expTimeSlider)
