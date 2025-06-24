@@ -87,10 +87,10 @@ class Worker(QObject):
             count += 1
             
         for ind, p in enumerate(store):
-	
+			p = p.view(np.uint16).reshape(actual_size[1], actual_size[0])
             
             if cropped:
-                p = np.array(p[y1 : y2 , x1*2 : x2*2])
+                p = np.array(p[y1 : y2 , x1 : x2])
             #print(p.shape)
             p.tofile(f'{dir_name}/{file_name + str(ind+1)}.raw')
            
@@ -110,8 +110,9 @@ class Worker3(QObject):
 	def run(self):
 		
 		arr = picam2.capture_array('raw')
+		arr = arr.view(np.uint16).reshape(actual_size[1], actual_size[0])
 		if cropped:
-			arr = np.array(arr[y1 : y2, x1*2 : x2*2])
+			arr = np.array(arr[y1 : y2, x1 : x2])
 		#print(arr.shape)   
 		arr.tofile(f'{dir_name}/{file_name + str(still)}.raw') 
 		
