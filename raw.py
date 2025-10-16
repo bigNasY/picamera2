@@ -20,10 +20,12 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib import style
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+import bluetooth
+import RPi.GPIO as GPIO
 
 style.use('fivethirtyeight')
-fig, ax = plt.subplots()
-canvas = FigureCanvas(fig)
+#fig, ax = plt.subplots()
+#canvas = FigureCanvas(fig)
 matplotlib.use('Qt5Agg')
 picam2 = Picamera2()
 cropped = False
@@ -41,27 +43,34 @@ path = ''
 app = QApplication([])
 overlay = np.zeros((721, 1281, 4), dtype=np.uint8)
 capture_time = 1
-scale = 1.05
+
 target = 0
 cur_task = ''
 running = False
 min_exp, max_exp, def_exp = picam2.camera_controls['ExposureTime']
 exposure_time = (max_exp + min_exp) // 2
-scale = 1.05
+count = 1
 frame_rate = 30
 lens_pos = 32
 stills = 1
 x1 = 0
-x2 = 1536
+x2 = 4608
 y1 = 0
-y2 = 864
+y2 = 2592
 mode = picam2.sensor_modes[0]
 actual_size = [i for i in mode['size']]
-config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False), raw={'format' : picam2.sensor_modes[0]['unpacked'], 'size' : picam2.sensor_modes[0]['size']})
+config = picam2.create_preview_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False), raw={'format' : mode['unpacked'], 'size' : mode['size']})
 picam2.align_configuration(config)
 picam2.configure(config)
 picam2.set_controls({"FrameRate" : frame_rate, 'ExposureTime' : exposure_time, 'LensPosition' : lens_pos})
 
+
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(12, GPIO.OUT)
+pwm = GPIO.PWM(12,1000)
+brightness = 50
+pwm.start(brightness)
 
 
 class Worker(QObject):
@@ -69,34 +78,40 @@ class Worker(QObject):
     
     
     def run(self):
+        global count
+        fps_count = count
         store = []
-        ratioX = (4098//1536)
-        ratioY = (2592//864)
-        count = 1
         #change_config(picam2.create_still_configuration(sensor={'output_size' : mode['size'], 'bit_depth' : mode['bit_depth']}, transform=Transform(vflip=False), raw={'format' : picam2.sensor_modes[0]['unpacked'], 'size' : mode['size']}))
         time.sleep(3)
         t_end = time.time() + capture_time *1.0
         print('checkpoint ')
-        while time.time() <= t_end:
-            ts = time.time()
-            r = picam2.capture_array('raw')
-            store.append(r)
-            te = time.time()
-            fps = (1/(te-ts))
-            label2.setText(f'FPS: {int(fps)}')
-            count += 1
+        if cropped:
+            while time.time() <= t_end:
+                ts = time.time()
+                r = picam2.capture_array('raw')
+                r = r.view(np.uint16).reshape(mode['size'][1], mode['size'][0])
+                r = np.array(r[y1 : y2, x1 : x2])
+                r.tofile(f'{dir_name}/{file_name + str(count)}.raw')
+                te = time.time()
+                fps = (1/(te-ts))
+                label2.setText(f'FPS: {int(fps)}')
+                count += 1
             
-        for ind, p in enumerate(store):
-			p = p.view(np.uint16).reshape(actual_size[1], actual_size[0])
-            
-            if cropped:
-                p = np.array(p[y1 : y2 , x1 : x2])
-            #print(p.shape)
-            p.tofile(f'{dir_name}/{file_name + str(ind+1)}.raw')
+        else:
+            while time.time() <= t_end:
+                ts = time.time()
+                r = picam2.capture_array('raw')
+                r = r.view(np.uint16).reshape(mode['size'][1], mode['size'][0])
+                count += 1
+                r.tofile(f'{dir_name}/{file_name + str(count)}.raw')
+                te = time.time()
+                fps = (1/(te-ts))
+                
+      
            
         
         #print(f'len: {len(store)}')
-        print(f'actual fps: {count/capture_time}')
+        print(f'actual fps: {(count-fps_count)/capture_time}')
          
        
   
@@ -110,46 +125,49 @@ class Worker3(QObject):
 	def run(self):
 		
 		arr = picam2.capture_array('raw')
-		arr = arr.view(np.uint16).reshape(actual_size[1], actual_size[0])
+		print(np.amax(arr))
+		arr = arr.view(np.uint16).reshape(mode['size'][1], mode['size'][0])
+		
 		if cropped:
 			arr = np.array(arr[y1 : y2, x1 : x2])
-		#print(arr.shape)   
-		arr.tofile(f'{dir_name}/{file_name + str(still)}.raw') 
 		
+		print(arr.shape) 
+		print(np.amax(arr))
+		
+		
+		arr.tofile(f'{dir_name}/{file_name + str(still)}.raw') 
+		#cv2.imwrite(f'{dir_name}/{file_name + str(still)}.jpg', cv2.cvtColor(arr, cv2.COLOR_BAYER_RG2BGR))
         
 		self.finished.emit()
         
 class Worker2(QObject):
-    finished = pyqtSignal()
+	finished = pyqtSignal()
     
 
     
     
-    def run(self):
-        global xs
-        global ys
-        global ax
+	def run(self):
+		global xs
+		global ys
+		global ax
  
 
        
-        count = 1
-        while True:
-            if not recording:
-                #print('done')
-                time.sleep(1)
-                i = picam2.capture_array(f'raw')
-                if cropped:
-                    i = i[y1 : y2 , x1*2 : x2*2]
-                xs.append(count)
-                if(len(xs) > 10):
-                    xs.pop(0)
-                count += 1
-                mean_intensity = np.mean(i)
-                ys.append(mean_intensity)
-                if(len(ys) > 10):
-                    ys.pop(0)
+		count = 1
+		while True:
+			if recording:
+				break
+			time.sleep(0.5)
+			i = picam2.capture_array(f'raw')
+			i = i.view(np.uint16).reshape(mode['size'][1], mode['size'][0])
+			if cropped:
+				i = i[y1 : y2 , x1 : x2]
+               
+			mean_intensity = np.mean(i)
+              
+			client_sock.send(str(mean_intensity))
                 
-        self.finished.emit()
+		self.finished.emit()
           
             
      
@@ -163,6 +181,8 @@ thread3 = QThread()
 worker = Worker()
 worker2 = Worker2()
 worker3 = Worker3()
+
+
 
 def change_config(cfg):
     picam2.stop()
@@ -310,7 +330,7 @@ def on_button7_clicked():
 	global ani
 	global recording 
 	recording = True
-	ani.pause()
+	#ani.pause()
 	
 	cwd = os.getcwd()
 	try:
@@ -318,17 +338,15 @@ def on_button7_clicked():
 		os.mkdir(path)
 	except:
 		pass
-	worker.moveToThread(thread)
-	thread.started.connect(worker.run)
-	worker.finished.connect(on_thread_finish)
-	worker.finished.connect(thread.quit)
+
 	thread.start()
 
 def on_thread_finish():
-	global ani
-	global recording 
+	global thread2
+	global recording
 	recording = False
-	ani.resume()
+	thread2.start()
+	#ani.resume()
 	
 def on_x1_changed(val):
 	if(modeNum == 2):
@@ -343,7 +361,7 @@ def on_x1_changed(val):
 			if(x >= 0 and x <= actual_size[0]):
 				
 				x1 = x
-				overlay[:1280, math.floor(x*ratio)] = (255, 0, 0, 500)
+				overlay[:1280, math.floor(x*ratio)] = (255, 0, 0, 255)
 				qpicamera2.set_overlay(overlay)
 			
 		except:
@@ -364,7 +382,7 @@ def on_x2_changed(val):
 			
 			if(x >= x1 and x <= actual_size[0]):
 				
-				overlay[:1280, math.floor(x*ratio)] = (255, 0, 0, 500)
+				overlay[:1280, math.floor(x*ratio)] = (255, 0, 0, 255)
 				qpicamera2.set_overlay(overlay)
 				
 			
@@ -384,7 +402,7 @@ def on_y1_changed(val):
 			
 			if(x >= 0 and x <= actual_size[1]):
 				y1 = x
-				overlay[math.floor(x*ratio), :1280] = (255, 0, 0, 500)
+				overlay[math.floor(x*ratio), :1280] = (255, 0, 0, 255)
 				qpicamera2.set_overlay(overlay)
 				
 		except:
@@ -401,7 +419,7 @@ def on_y2_changed(val):
 			
 			if(x >= y1 and x <= actual_size[1]):
 				y2 = x
-				overlay[math.floor(x*ratio), :1280] = (255, 0, 0, 500)
+				overlay[math.floor(x*ratio), :1280] = (255, 0, 0, 255)
 				qpicamera2.set_overlay(overlay)
 				
 		except:
@@ -530,13 +548,22 @@ def frame_text_changed(val):
 
 	except:
 		pass
-		
-def animate(i):
-    ax.clear()
-    ax.set_title("Intensity vs. Time")
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Intensity")
-    ax.plot(xs, ys)		
+
+def set_level(val):
+	global brightness
+	try:
+		if int(val):
+			if int(val) >= 0 and int(val) <= 100:
+				brightness = int(val)
+	except:
+		brightness = 0
+		return
+
+
+
+def set_cycle():
+	global pwm
+	pwm.ChangeDutyCycle(brightness)
 
 
 qpicamera2 = QGlPicamera2(picam2, width=1280, height=720, keep_ar=False)
@@ -682,15 +709,18 @@ layout.addLayout(layout_v)
 layout_v.addLayout(layout_h)
 layout_v.addLayout(layout_h2)
 
-window2 = QWidget()
-layout5 = QHBoxLayout()
-layout5.addWidget(canvas)
+bright = QLineEdit()
+bright.setMaxLength(3)
+bright.setPlaceholderText("Adjust Intensity")
+set_br = QPushButton("Set Intensity")
+bright.textEdited.connect(set_level)
+set_br.clicked.connect(set_cycle)
 
-window2.setLayout(layout5)
-window2.resize(700, 700)
-#canvas.setFixedSize(300, 700)
-#layout.addWidget(canvas)
+layout_h4 = QHBoxLayout()
+layout_h4.addWidget(bright)
+layout_h4.addWidget(set_br)
 
+layout_v.addLayout(layout_h4)
 
 
 
@@ -701,7 +731,11 @@ picam2.start()
 qpicamera2.set_overlay(overlay)
 window.show()
 
-window2.show()
+
+worker.moveToThread(thread)
+thread.started.connect(worker.run)
+worker.finished.connect(on_thread_finish)
+worker.finished.connect(thread.quit)
 
 worker2.moveToThread(thread2)
 thread2.started.connect(worker2.run)
@@ -709,9 +743,25 @@ worker2.finished.connect(thread2.quit)
 thread2.start()
 
 
-ani = animation.FuncAnimation(fig, animate, interval=1000)
+
+server_sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
+port = 1
+server_sock.bind(("", port))
+server_sock.listen(1)
+
+print('waiting')
+
+client_sock, address = server_sock.accept()
+
+print('connected')
+
+
 
 
 app.exec()
+client_sock.close()
+server_sock.close()
+pwm.stop()
+
 
 
